@@ -20,6 +20,7 @@ import (
 	"time"
 	"sync"
 	"strconv"
+	"log/slog"
 )
 
 type Result struct{
@@ -110,7 +111,7 @@ func main() {
 	//подключение файлового сервера к роутеру на корневой путь
 	fileServer := http.FileServer(http.Dir("./static"))
 	mux.Handle("/", fileServer)
-	http.HandleFunc("/api/fetch", apiHandler)
+	mux.HandleFunc("/api/fetch", apiHandler)
 
 	//используется префиксный путь
 	// mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request){
@@ -121,7 +122,7 @@ func main() {
 	mux.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request){
 		w.Write([]byte("Страница о проекта"))
 	})
-
+	slog.HandlerOptions
 	//универсальный обработчик(корень)
 	//является префиксом для всего
 	// mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request){
