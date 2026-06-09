@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <script src="script.js" defer></script>
+    <link rel="stylesheet" href="style.css">
+    
+</head>
+<body>
+    <div class="sidebar"> 
+    <h2> Настройки парсера</h2>
+    <div class="control-group">
+         <label for="reqCount">Запросов на каждый API:</label> 
+         <input type="number" id="reqCount" value="3" min="1" max="20">
+    </div> 
+    <button id="startBtn">Запустить</button> </div> 
+    <div class="main-content">
+        <h1> Результаты обработки</h1>
+        <div id="loader"> асинхронный опрос серверов горутинами...</div> 
+        <div class="results-grid" id="resultsContainer"> </div>
+    </div> 
+</body>
+
+   
+</html>
