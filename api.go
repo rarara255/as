@@ -122,7 +122,6 @@ func main() {
 	mux.HandleFunc("/about", func(w http.ResponseWriter, r *http.Request){
 		w.Write([]byte("Страница о проекта"))
 	})
-	slog.HandlerOptions
 	//универсальный обработчик(корень)
 	//является префиксом для всего
 	// mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request){
