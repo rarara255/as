@@ -12,15 +12,17 @@
 package main
 
 import (
-	"fmt"
+	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
-	"net/http"
-	"time"
-	"sync"
-	"strconv"
 	"log/slog"
+	"net/http"
+	"os"
+	"strconv"
+	"sync"
+	"time"
 )
 
 type Result struct{
@@ -42,14 +44,37 @@ type Weather struct {
 	Main MainData `json:"main"`
 }
 
-func fetch(apiType string, url string, results chan <- Result, wg *sync.WaitGroup){
+
+type Log struct{
+	logger *slog.Logger
+}
+
+func (Log *Log) fetch (ctx context.Context, apiType string, url string, results chan <- Result, wg *sync.WaitGroup){
 	defer wg.Done()
+
+	reqID := ctx.Value("req_id").(string)
+
+	fetchLogger:= Log.logger.With(
+		slog.String("required_id", reqID),
+		slog.String("api_type", apiType),
+	)
+	
+	fetchLogger.Debug("Горутина запущена. Осуществляем GET запрос.", slog.String("url", url))
+
+	startTime := time.Now()
+
 	resp, errGet := http.Get(url)
 	if errGet != nil{
+		fetchLogger.Warn("Ошибка GET запроса", slog.String("error", errGet.Error()))
+
 		results <- Result{Source: apiType, Data: "Не удалось связаться с сервером"}
 		return
 	}
+
 	defer resp.Body.Close()
+
+	spendTime := time.Since(startTime)
+	fetchLogger.Info("response получен", slog.Int("http_status", resp.StatusCode), slog.Duration("duration_ms", spendTime))
 
 	body, _ := io.ReadAll(resp.Body)
 
@@ -57,18 +82,32 @@ func fetch(apiType string, url string, results chan <- Result, wg *sync.WaitGrou
 
 	if apiType == "CAT"{
 		var fact CatFact
-		json.Unmarshal(body, &fact)
+		if errUnmarshal := json.Unmarshal(body, &fact); errUnmarshal != nil{
+			fetchLogger.Error("ошибка парсинга", slog.String("error", errUnmarshal.Error()))
+		}
 		message = fact.Fact
 	}else{
 		var weather Weather
-		json.Unmarshal(body, &weather)
+		if errUnmarshal := json.Unmarshal(body, &weather); errUnmarshal != nil{
+			fetchLogger.Error("ошибка парсинга", slog.String("error", errUnmarshal.Error()))
+		}
 		message = fmt.Sprintf("Погода: в %s, Температура %.2f, Ощущается как %.2f", weather.Name, weather.Main.Temp, weather.Main.FeelsTemp)
 	}
 
 	results <- Result {Source: apiType, Data: message}
+	fetchLogger.Debug("Данные отправлены в канал для результатов")
 }
 
-func apiHandler(w http.ResponseWriter, r *http.Request){
+func (Log *Log)apiHandler(w http.ResponseWriter, r *http.Request){
+	reqID := strconv.FormatInt(time.Now().UnixNano(),36)
+	ctx := context.WithValue(r.Context(), "req_id", reqID)
+
+	reqLogger := Log.logger.With(
+		slog.String("req_id", reqID),
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+	)
+
 	countSTR :=  r.URL.Query().Get("count")
 
 	count, countErr := strconv.Atoi(countSTR)
@@ -83,8 +122,8 @@ func apiHandler(w http.ResponseWriter, r *http.Request){
 
 	for i := 0; i < count; i++{
 		wg.Add(2)
-		go fetch("CAT", "https://catfact.ninja/fact", results, &wg)
-		go fetch("WEATHER", "https://api.openweathermap.org/data/2.5/weather?q=Ulan-Ude&units=metric&appid=fe7a3b2ef70de13b795768ff1f177b24", results, &wg)
+		go fetch(ctx, "CAT", "https://catfact.ninja/fact", results, &wg)
+		go fetch(ctx, "WEATHER", "https://api.openweathermap.org/data/2.5/weather?q=Ulan-Ude&units=metric&appid=fe7a3b2ef70de13b795768ff1f177b24", results, &wg)
 	}
 
 	go func() {
@@ -107,11 +146,23 @@ func apiHandler(w http.ResponseWriter, r *http.Request){
 
 
 func main() {
+
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	})
+
+	logger := slog.New(jsonHandler)
+
+	loggerJSON := &Log{
+		logger: logger,
+	}
+	
+	loggerJSON.logger.Info("Инициализация мультиплексера и маршрутов")
 	mux := http.NewServeMux() // создание локального мультиплексора
 	//подключение файлового сервера к роутеру на корневой путь
 	fileServer := http.FileServer(http.Dir("./static"))
 	mux.Handle("/", fileServer)
-	mux.HandleFunc("/api/fetch", apiHandler)
+	mux.HandleFunc("/api/fetch", apiHandler())
 
 	//используется префиксный путь
 	// mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request){
